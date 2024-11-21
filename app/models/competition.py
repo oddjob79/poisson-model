@@ -14,7 +14,6 @@ if TYPE_CHECKING:
     from app.models.fixture import Fixture
     from app.models.team import Team
 
-from functools import reduce
 
 team_competition = Table(
     "team_competition",
@@ -45,7 +44,7 @@ class Competition(Base):
     )
 
     # calculated fields
-    total_home_goals: Mapped[int] = sum([f.ft_home for f in fixtures])
+    # total_home_goals: Mapped[int] = sum([f.ft_home for f in fixtures])
     # total_away_goals: Mapped[int] = sum([f.ft_away for f in fixtures])
     # total_goals: Mapped[int] = total_home_goals + total_away_goals
     # avg_goals_per_game: Mapped[int]

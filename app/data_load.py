@@ -188,28 +188,33 @@ def fixture_handler():
     teams = session.scalars(select(Team)).all()    
     competitions = session.scalars(select(Competition)).all()
     for c in competitions:
+        if c.id not in [5,7,9]:
+            continue
         # print(f"https://v3.football.api-sports.io/fixtures?league={c.alt_id}&season={c.year}")
         url = f"https://v3.football.api-sports.io/fixtures?league={c.alt_id}&season={c.year}"
 
         api_fixtures = get_from_api(url=url)
+
         fixture_data = parse_fixtures(
             fixtures=api_fixtures, 
             competition_id=c.id,
             teams=[t for t in teams if c in t.competitions],
         )
-
         try:
             insert_stmt = upsert(Fixture).values(fixture_data)
-            stmt = insert_stmt.on_conflict_do_update(
-                constraint="uq_fixture_competition_home_team_away_team", 
-                set_=dict(
-                    timestamp_utc=insert_stmt.excluded.timestamp_utc,
-                    ht_home=insert_stmt.excluded.ht_home,
-                    ht_away=insert_stmt.excluded.ht_away,
-                    ft_home=insert_stmt.excluded.ft_home,
-                    ft_away=insert_stmt.excluded.ft_away,
-                    result=insert_stmt.excluded.result,
-                )
+            # stmt = insert_stmt.on_conflict_do_update(
+            #     constraint="uq_fixture_competition_home_team_away_team", 
+            #     set_=dict(
+            #         timestamp_utc=insert_stmt.excluded.timestamp_utc,
+            #         ht_home=insert_stmt.excluded.ht_home,
+            #         ht_away=insert_stmt.excluded.ht_away,
+            #         ft_home=insert_stmt.excluded.ft_home,
+            #         ft_away=insert_stmt.excluded.ft_away,
+            #         result=insert_stmt.excluded.result,
+            #     )
+            # )
+            stmt = insert_stmt.on_conflict_do_nothing(
+                constraint="uq_fixture_competition_home_team_away_team"
             )
             session.execute(stmt)
         except Exception as e:

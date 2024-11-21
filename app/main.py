@@ -1,76 +1,99 @@
-import json
+from sqlalchemy import select
+
 from typing import List
-from sqlalchemy import insert
 from app.conn import Session
+from app.models.fixture import Fixture
 from app.models.competition import Competition
+from app.models.team import Team
 
 
-map__lg_name__short_name = {
-    "Premier League": "EPL",
-    "Championship": "CHP",
-    "League One": "L1",
-    "League Two": "L2",
-    "National League": "NTL",
-}
+session = Session()
 
 
-def json_to_dictlist(filename: str) -> List[dict]:
-    with open(filename) as f_in:
-        return json.load(f_in)["response"]
+def calc_competition_stats() -> List[dict]:
+    comps = session.scalars(select(Competition)).all()
+
+    comp_stats = list()
+    for c in comps:
+        home_goals = [f.ft_home for f in c.fixtures if f.ft_home is not None]
+        away_goals = [f.ft_away for f in c.fixtures if f.ft_away is not None]
+
+        total_home_goals = sum(home_goals)
+        total_away_goals = sum(away_goals)
+
+        avg_home_goals = total_home_goals / len(home_goals)
+        avg_away_goals = total_away_goals / len(away_goals)
+
+        comp_stats.append(
+            {
+                "competition_id": c.id,
+                "name": c.name,
+                "year": c.year,
+                "total_home_goals": total_home_goals,
+                "total_away_goals": total_away_goals,
+                "avg_home_goals": avg_home_goals,
+                "avg_away_goals": avg_away_goals,
+            }
+        )
+
+    print(comp_stats)
+    return comp_stats
 
 
-def parse_fixtures(fixtures: List[dict]) -> List[dict]:
-    return [
-        {
-            "id": f["fixture"]["id"],
-            "date": f["fixture"]["date"],
-            "status": f["fixture"]["status"]["short"],
-            "league_id": f["league"]["id"],
-            "league_name": f["league"]["name"],
-            "season": f["league"]["season"],
-            "round": f["league"]["round"],
-            "home_id": f["teams"]["home"]["id"],
-            "home_name": f["teams"]["home"]["name"],
-            "home_ht_goals": f["score"]["halftime"]["home"],
-            "home_ft_goals": f["goals"]["home"],
-            "away_id": f["teams"]["away"]["id"],
-            "away_name": f["teams"]["away"]["name"],
-            "away_ht_goals": f["score"]["halftime"]["away"],
-            "away_ft_goals": f["goals"]["away"],
-        }
-        for f in fixtures
-    ]
+def calc_current_team_stats(comp_stats):
+    teams = session.scalars(select(Team)).all()
+    team_list = list()
 
+    for t in teams:
+        total_home_goals = tuple(
+            (f.ft_home, f.ft_away, f.competition_id)
+            for f in t.home_fixtures
+            if f.ft_home is not None and f.competition.year == 2024
+        )
 
-def parse_leagues(leagues: str) -> List[dict]:
-    leagues = [
-        {
-            "name": league["league"]["name"],
-            "year": season["year"],
-            "short_name": map__lg_name__short_name[league["league"]["name"]],
-            "country": league["country"]["name"],
-            "alt_id": league["league"]["id"],
-        }
-        for league in leagues for season in league["seasons"]
-        if league["league"]["id"] in [39, 40, 41, 42, 43]
-        and season["year"] in [2023, 2024]
-    ]
-    return leagues
+        total_away_goals = tuple(
+            (f.ft_home, f.ft_away)
+            for f in t.away_fixtures
+            if f.ft_home is not None and f.competition.year == 2024
+        )
+
+        competition_id = max(hg[2] for hg in total_home_goals)
+        total_hg_scored = sum([hg[0] for hg in total_home_goals])
+        total_hg_conceded = sum([hg[1] for hg in total_home_goals])
+        total_ag_scored = sum([ag[1] for ag in total_away_goals])
+        total_ag_conceded = sum([ag[0] for ag in total_away_goals])
+
+        team_list.append(
+            {
+                "team_id": t.id,
+                "name": t.name,
+                "competition_id": competition_id,
+                "total_home_goals_scored": total_hg_scored,
+                "total_home_goals_conceded": total_hg_conceded,
+                "total_home_games_played": len(total_home_goals),
+                "avg_hg_scored": total_hg_scored / len(total_home_goals),
+                "avg_hg_conceded": total_hg_conceded / len(total_home_goals),
+                "total_away_goals_scored": total_ag_scored,
+                "total_away_goals_conceded": total_ag_conceded,
+                "total_away_games_played": len(total_away_goals),
+                "avg_ag_scored": total_ag_scored / len(total_away_goals),
+                "avg_ag_conceded": total_ag_conceded / len(total_away_goals),
+            }
+        )
+
+    return team_list
 
 
 def handler():
-    eng_leagues = json_to_dictlist(filename="./app/data/leagues_new.json")
-    # season_fixtures = parse_fixtures(fixtures=fixtures)
-    league_data = parse_leagues(leagues=eng_leagues)
+    # res = session.scalars(
+    #     select(Fixture).where(Fixture.competition_id==1)
+    # ).all()
 
-    print(league_data)
+    # home_goals = [r.ft_home for r in res]
+    # away_goals = [r.ft_away for r in res]
 
-    # session = Session()
-    # session.execute(insert(Competition), league_data)
-
-
+    comp_stats = calc_competition_stats()
 
 
 if __name__ == "__main__":
-    # print('hello')
     handler()
